@@ -639,6 +639,48 @@
     </div>
 
     <div class="card">
+      <div class="card-header"><span class="card-title">作業写真</span></div>
+      <div class="card-body">
+        <label class="photo-upload-area" for="photoInput">
+          <div style="font-size:28px;margin-bottom:6px">📷</div>
+          <div style="color:var(--text3);font-size:12px">タップして写真を追加</div>
+          <input type="file" id="photoInput" accept="image/*" multiple onchange="addPhotos(event)">
+        </label>
+        <div class="photo-grid" id="photoGrid"></div>
+      </div>
+    </div>
+
+    <div class="card">
+      <div class="card-header"><span class="card-title">メモ</span></div>
+      <div class="card-body">
+        <textarea class="memo-input" id="dayMemo" placeholder="港名・船名・特記事項など" rows="3"></textarea>
+      </div>
+    </div>
+
+    <div class="card">
+      <div class="card-header"><span class="card-title">位置情報（任意）</span></div>
+      <div class="card-body">
+        <div id="gpsStatus" style="font-size:12px;color:var(--text3);margin-bottom:8px;">未取得</div>
+        <div id="gpsInfo" style="font-family:var(--mono);font-size:12px;line-height:1.6;color:var(--text2);margin-bottom:8px;"></div>
+        <button class="add-btn" onclick="captureGPS()">📍 現在地を記録</button>
+        <button class="add-btn" onclick="clearGPS()">✕ 位置情報を削除</button>
+      </div>
+    </div>
+
+    <button class="save-btn" onclick="saveDay()">💾 保存</button>
+  </div>
+
+  <div id="page-history" class="page">
+    <div class="notice">過去の記録一覧です。タップして編集できます。</div>
+    <div id="historyList"></div>
+  </div>
+
+  <div id="page-weekly" class="page">
+    <div class="notice">
+      基準労働期間は日曜始まり7日間で集計します。週72時間超は補償休日の目安として警告表示。<br>
+      「週40時間超」と「日8時間超」の重複には注意してください（残業計算は二重計上しない運用推奨）。
+    </div>
+    <div class="card">
       <div class="card-header"><span class="card-title">時給・残業単価（船員法向け計算補助）</span></div>
       <div class="card-body">
         <div class="form-row">
@@ -683,49 +725,6 @@
           ※ 本日の概算残業額は「日8時間超」部分を暫定表示（週40超・重複控除は週集計で別確認）。
         </div>
       </div>
-    </div>
-
-    <div class="card">
-      <div class="card-header"><span class="card-title">作業写真</span></div>
-      <div class="card-body">
-        <label class="photo-upload-area" for="photoInput">
-          <div style="font-size:28px;margin-bottom:6px">📷</div>
-          <div style="color:var(--text3);font-size:12px">タップして写真を追加</div>
-          <input type="file" id="photoInput" accept="image/*" multiple onchange="addPhotos(event)">
-        </label>
-        <div class="photo-grid" id="photoGrid"></div>
-      </div>
-    </div>
-
-    <div class="card">
-      <div class="card-header"><span class="card-title">メモ</span></div>
-      <div class="card-body">
-        <textarea class="memo-input" id="dayMemo" placeholder="港名・船名・特記事項など" rows="3"></textarea>
-      </div>
-    </div>
-
-    <div class="card">
-      <div class="card-header"><span class="card-title">位置情報（任意）</span></div>
-      <div class="card-body">
-        <div id="gpsStatus" style="font-size:12px;color:var(--text3);margin-bottom:8px;">未取得</div>
-        <div id="gpsInfo" style="font-family:var(--mono);font-size:12px;line-height:1.6;color:var(--text2);margin-bottom:8px;"></div>
-        <button class="add-btn" onclick="captureGPS()">📍 現在地を記録</button>
-        <button class="add-btn" onclick="clearGPS()">✕ 位置情報を削除</button>
-      </div>
-    </div>
-
-    <button class="save-btn" onclick="saveDay()">💾 保存</button>
-  </div>
-
-  <div id="page-history" class="page">
-    <div class="notice">過去の記録一覧です。タップして編集できます。</div>
-    <div id="historyList"></div>
-  </div>
-
-  <div id="page-weekly" class="page">
-    <div class="notice">
-      基準労働期間は日曜始まり7日間で集計します。週72時間超は補償休日の目安として警告表示。<br>
-      「週40時間超」と「日8時間超」の重複には注意してください（残業計算は二重計上しない運用推奨）。
     </div>
     <div id="weeklyContent"></div>
   </div>
@@ -1618,5 +1617,6 @@ if ("serviceWorker" in navigator) {
 </script>
 </body>
 </html>
+
 
 
