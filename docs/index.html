@@ -1592,7 +1592,10 @@ function showPage(name) {
   if (idxMap[name] !== undefined) navBtns[idxMap[name]].classList.add('active');
 
   if (name === 'history') renderHistory();
-  if (name === 'weekly') renderWeekly();
+  if (name === 'weekly') {
+  renderWeekly();
+  renderRateCalc();
+}
   if (name === 'export') renderExportStats();
   renderTodayHash();
 }
@@ -1617,6 +1620,7 @@ if ("serviceWorker" in navigator) {
 </script>
 </body>
 </html>
+
 
 
 
