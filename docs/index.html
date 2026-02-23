@@ -704,22 +704,22 @@
           </div>
         </div>
         <div class="form-row">
-          <div>
-            <div class="field-label">残業割増率（通常）</div>
-            <input class="field-input" id="otRate" type="number" min="1" step="0.01" value="1.25" onchange="renderRateCalc()">
-          </div>
-          <div>
-            <div class="field-label">深夜/休日割増率（参考）</div>
-            <input class="field-input" id="nightRate" type="number" min="1" step="0.01" value="1.35" onchange="renderRateCalc()">
-          </div>
-        </div>
+  <div>
+    <div class="field-label">残業割増率（通常）</div>
+    <input class="field-input" id="otRate" type="number" min="1" step="0.01" value="1.25" onchange="renderRateCalc()">
+  </div>
+  <div id="nightRateWrap">
+    <div class="field-label">深夜/休日割増率（参考）</div>
+    <input class="field-input" id="nightRate" type="number" min="1" step="0.01" value="1.35" onchange="renderRateCalc()">
+  </div>
+</div>
 
         <div class="summary-grid" style="margin-top:8px;">
-          <div class="stat-box"><div class="stat-label">通常時給</div><div class="stat-value" id="baseHourly">-</div></div>
-          <div class="stat-box"><div class="stat-label">残業単価</div><div class="stat-value" id="otHourly">-</div></div>
-          <div class="stat-box"><div class="stat-label">深夜/休日単価</div><div class="stat-value" id="nightHourly">-</div></div>
-          <div class="stat-box"><div class="stat-label">本日の概算残業額</div><div class="stat-value" id="todayOtAmount">-</div></div>
-        </div>
+  <div class="stat-box"><div class="stat-label">通常時給</div><div class="stat-value" id="baseHourly">-</div></div>
+  <div class="stat-box"><div class="stat-label">残業単価</div><div class="stat-value" id="otHourly">-</div></div>
+  <div class="stat-box" id="nightHourlyWrap"><div class="stat-label">深夜/休日単価</div><div class="stat-value" id="nightHourly">-</div></div>
+  <div class="stat-box"><div class="stat-label">本日の概算残業額</div><div class="stat-value" id="todayOtAmount">-</div></div>
+</div>
         <div class="small" style="margin-top:8px;">
           ※ 計算補助です。実際の算定基礎（含める手当/除外手当）は就業規則・契約・実態で確認してください。<br>
           ※ 本日の概算残業額は「日8時間超」部分を暫定表示（週40超・重複控除は週集計で別確認）。
@@ -859,8 +859,13 @@ async function init() {
 }
 function setDefaultRateInputs() {
   const defs = {
-    baseMonthly:'0', shipAllowanceMonthly:'0', otherIncludedMonthly:'0',
-    monthlyHours:'173', otRate:'1.25', nightRate:'1.35'
+    calcMode:'seaman',          // ← 追加（船員法デフォ）
+    baseMonthly:'0',
+    shipAllowanceMonthly:'0',
+    otherIncludedMonthly:'0',
+    monthlyHours:'173',
+    otRate:'1.30',              // ← 船員法デフォ
+    nightRate:'1.35'
   };
   Object.entries(defs).forEach(([id,v]) => {
     const el = document.getElementById(id);
@@ -924,6 +929,36 @@ async function loadDay() {
   renderTodayHash();
 }
 
+function applyRateModeUI() {
+  const mode = document.getElementById('calcMode')?.value || 'seaman';
+  const isSeaman = mode === 'seaman';
+
+  const nightRateWrap = document.getElementById('nightRateWrap');
+  const nightHourlyWrap = document.getElementById('nightHourlyWrap');
+
+  if (nightRateWrap) nightRateWrap.style.display = isSeaman ? 'none' : '';
+  if (nightHourlyWrap) nightHourlyWrap.style.display = isSeaman ? 'none' : '';
+}
+
+function handleRateModeChange() {
+  const mode = document.getElementById('calcMode')?.value || 'seaman';
+  const otEl = document.getElementById('otRate');
+
+  if (otEl) {
+    const current = Number(otEl.value || 0);
+
+    // 「デフォルト値」として自然に切替（手入力を潰しすぎない）
+    if (mode === 'seaman') {
+      if (!otEl.value || current === 1.25) otEl.value = '1.30';
+    } else {
+      if (!otEl.value || current === 1.30) otEl.value = '1.25';
+    }
+  }
+
+  applyRateModeUI();
+  renderRateCalc();
+}
+  
 async function saveDay() {
   const data = {
     date: currentDate,
@@ -1241,21 +1276,28 @@ function getRateInputs() {
     return Number.isFinite(v) ? v : fallback;
   };
   return {
+    calcMode: document.getElementById('calcMode')?.value || 'seaman', // ←追加
     baseMonthly: parse('baseMonthly'),
     shipAllowanceMonthly: parse('shipAllowanceMonthly'),
     otherIncludedMonthly: parse('otherIncludedMonthly'),
     monthlyHours: parse('monthlyHours', 173),
-    otRate: parse('otRate', 1.25),
+    otRate: parse('otRate', 1.30),
     nightRate: parse('nightRate', 1.35)
   };
 }
 function restoreRateInputs(v) {
   if (!v) return;
-  ['baseMonthly','shipAllowanceMonthly','otherIncludedMonthly','monthlyHours','otRate','nightRate']
-    .forEach(k => { if (v[k] !== undefined && document.getElementById(k)) document.getElementById(k).value = v[k]; });
+  ['calcMode','baseMonthly','shipAllowanceMonthly','otherIncludedMonthly','monthlyHours','otRate','nightRate']
+    .forEach(k => {
+      if (v[k] !== undefined && document.getElementById(k)) {
+        document.getElementById(k).value = v[k];
+      }
+    });
+  applyRateModeUI(); // ←追加
 }
 function yen(n) { return Number.isFinite(n) ? `${Math.round(n).toLocaleString('ja-JP')}円` : '-'; }
 function renderRateCalc() {
+  applyRateModeUI(); // ←追加
   const r = getRateInputs();
   const basisMonthly = r.baseMonthly + r.shipAllowanceMonthly + r.otherIncludedMonthly;
   const baseHourly = r.monthlyHours > 0 ? basisMonthly / r.monthlyHours : 0;
@@ -1620,6 +1662,7 @@ if ("serviceWorker" in navigator) {
 </script>
 </body>
 </html>
+
 
 
 
