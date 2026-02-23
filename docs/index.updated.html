@@ -1,0 +1,1097 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0" />
+<meta name="apple-mobile-web-app-capable" content="yes" />
+<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent" />
+<meta name="apple-mobile-web-app-title" content="航海勤務記録" />
+<meta name="format-detection" content="telephone=no" />
+<meta name="theme-color" content="#111827" />
+<link rel="manifest" href="./manifest.json">
+<meta name="theme-color" content="#111827">
+<link rel="apple-touch-icon" href="./icons/icon-180.png">
+<link rel="manifest" href="./manifest.json" />
+<link rel="apple-touch-icon" href="./icons/icon-180.png" />
+<title>航海勤務記録</title>
+<link rel="stylesheet" href="./styles.css" />
+
+</head>
+<body>
+
+<div class="header">
+  <div>
+    <div class="header-title">航海勤務記録 <span class="offline-badge" id="offlineBadge">OFFLINE</span></div>
+    <div class="header-date" id="headerDate"></div>
+  </div>
+</div>
+
+<div class="nav">
+  <button class="nav-btn active" onclick="showPage('input')">入力</button>
+  <button class="nav-btn" onclick="showPage('history')">履歴</button>
+  <button class="nav-btn" onclick="showPage('weekly')">週集計</button>
+  <button class="nav-btn" onclick="showPage('export')">出力</button>
+</div>
+
+<div class="main">
+  <div id="page-input" class="page active">
+    <div class="date-row">
+      <div class="date-nav" onclick="changeDate(-1)">◀</div>
+      <input type="date" class="date-input" id="currentDate" onchange="loadDay()">
+      <div class="date-nav" onclick="changeDate(1)">▶</div>
+    </div>
+
+    <div class="card">
+      <div class="card-header"><span class="card-title">本日集計</span></div>
+      <div class="card-body">
+        <div class="summary-grid">
+          <div class="stat-box"><div class="stat-label">労働時間</div><div class="stat-value" id="totalWork">0:00</div></div>
+          <div class="stat-box"><div class="stat-label">休憩時間</div><div class="stat-value" id="totalRest">0:00</div></div>
+          <div class="stat-box"><div class="stat-label">最短休息</div><div class="stat-value" id="minRest">-</div></div>
+          <div class="stat-box"><div class="stat-label">分割数</div><div class="stat-value" id="splitCount">0</div></div>
+        </div>
+        <div class="alert-box alert-danger" id="compAlert">⚠ 週72時間超過 → 補償休日が発生しています</div>
+        <div class="alert-box alert-danger" id="overlapAlert">⚠ セグメントの時間重複があります</div>
+        <div class="alert-box alert-warn" id="photoTimeAlert">⚠ 写真時刻とセグメントの照合警告</div>
+        <div class="alert-box alert-info" id="validationAlert">⚠ 未入力/不正なセグメントがあります</div>
+      </div>
+    </div>
+
+    <div class="card">
+      <div class="card-header"><span class="card-title">作業記録</span></div>
+      <div class="card-body" id="segmentList"></div>
+      <div style="padding:0 14px 14px">
+        <button class="add-btn" onclick="addSegment('work')">＋ 作業時間を追加</button>
+        <button class="add-btn" onclick="addSegment('rest')">＋ 休憩を追加</button>
+      </div>
+    </div>
+
+    <div class="card">
+      <div class="card-header"><span class="card-title">作業写真</span></div>
+      <div class="card-body">
+        <label class="photo-upload-area" for="photoInput">
+          <div style="font-size:28px;margin-bottom:6px">📷</div>
+          <div style="color:var(--text3);font-size:12px">タップして写真を追加</div>
+          <input type="file" id="photoInput" accept="image/*" multiple onchange="addPhotos(event)">
+        </label>
+        <div class="photo-grid" id="photoGrid"></div>
+      </div>
+    </div>
+
+    <div class="card">
+      <div class="card-header"><span class="card-title">メモ</span></div>
+      <div class="card-body">
+        <textarea class="memo-input" id="dayMemo" placeholder="港名・船名・特記事項など" rows="3"></textarea>
+      </div>
+    </div>
+
+    <div class="card">
+      <div class="card-header"><span class="card-title">位置情報（任意）</span></div>
+      <div class="card-body">
+        <div id="gpsStatus" style="font-size:12px;color:var(--text3);margin-bottom:8px;">未取得</div>
+        <div id="gpsInfo" style="font-family:var(--mono);font-size:12px;line-height:1.6;color:var(--text2);margin-bottom:8px;"></div>
+        <button class="add-btn" onclick="captureGPS()">📍 現在地を記録</button>
+        <button class="add-btn" onclick="clearGPS()">✕ 位置情報を削除</button>
+      </div>
+    </div>
+
+    <button class="save-btn" onclick="saveDay()">💾 保存</button>
+  </div>
+
+  <div id="page-history" class="page">
+    <div class="notice">過去の記録一覧です。タップして編集できます。</div>
+    <div id="historyList"></div>
+  </div>
+
+  <div id="page-weekly" class="page">
+    <div class="notice">
+      基準労働期間は日曜始まり7日間で集計します。週72時間超は補償休日の目安として警告表示。<br>
+      「週40時間超」と「日8時間超」の重複には注意してください（残業計算は二重計上しない運用推奨）。
+    </div>
+    <div class="card">
+      <div class="card-header"><span class="card-title">時給・残業単価（船員法向け計算補助）</span></div>
+      <div class="card-body">
+        <div class="form-row">
+          <div>
+            <div class="field-label">本給（月額）</div>
+            <input class="field-input" id="baseMonthly" type="number" min="0" step="1" placeholder="例 250000" onchange="renderRateCalc()">
+          </div>
+          <div>
+            <div class="field-label">乗船手当（月額）</div>
+            <input class="field-input" id="shipAllowanceMonthly" type="number" min="0" step="1" placeholder="例 30000" onchange="renderRateCalc()">
+          </div>
+        </div>
+        <div class="form-row">
+          <div>
+            <div class="field-label">算定基礎に含める他手当（月額）</div>
+            <input class="field-input" id="otherIncludedMonthly" type="number" min="0" step="1" value="0" onchange="renderRateCalc()">
+          </div>
+          <div>
+            <div class="field-label">月平均所定時間（既定173）</div>
+            <input class="field-input" id="monthlyHours" type="number" min="1" step="0.01" value="173" onchange="renderRateCalc()">
+          </div>
+        </div>
+        <div class="form-row">
+  <div>
+    <div class="field-label">残業割増率（通常）</div>
+    <input class="field-input" id="otRate" type="number" min="1" step="0.01" value="1.25" onchange="renderRateCalc()">
+  </div>
+  <div id="nightRateWrap">
+    <div class="field-label">深夜/休日割増率（参考）</div>
+    <input class="field-input" id="nightRate" type="number" min="1" step="0.01" value="1.35" onchange="renderRateCalc()">
+  </div>
+</div>
+
+        <div class="summary-grid" style="margin-top:8px;">
+  <div class="stat-box"><div class="stat-label">通常時給</div><div class="stat-value" id="baseHourly">-</div></div>
+  <div class="stat-box"><div class="stat-label">残業単価</div><div class="stat-value" id="otHourly">-</div></div>
+  <div class="stat-box" id="nightHourlyWrap"><div class="stat-label">深夜/休日単価</div><div class="stat-value" id="nightHourly">-</div></div>
+  <div class="stat-box"><div class="stat-label">本日の概算残業額</div><div class="stat-value" id="todayOtAmount">-</div></div>
+</div>
+        <div class="small" style="margin-top:8px;">
+          ※ 計算補助です。実際の算定基礎（含める手当/除外手当）は就業規則・契約・実態で確認してください。<br>
+          ※ 本日の概算残業額は「日8時間超」部分を暫定表示（週40超・重複控除は週集計で別確認）。
+        </div>
+      </div>
+    </div>
+    <div id="weeklyContent"></div>
+  </div>
+
+  <div id="page-export" class="page">
+    <div class="notice">
+      記録データをCSV/JSONで書き出しできます。<br>
+      証拠PDFモードは印刷画面を使って「1日1ページ」で出力します（iPhoneは共有→PDF保存）。
+    </div>
+
+    <button class="export-btn" onclick="exportCSV()">
+      <span class="export-icon">📊</span>
+      <div>
+        <div style="font-weight:500">CSV書き出し</div>
+        <div style="font-size:11px;color:var(--text3);margin-top:2px">日別・セグメント・GPS・ハッシュ付き</div>
+      </div>
+    </button>
+
+    <button class="export-btn" onclick="exportJSON()">
+      <span class="export-icon">💾</span>
+      <div>
+        <div style="font-weight:500">JSON書き出し（全データ）</div>
+        <div style="font-size:11px;color:var(--text3);margin-top:2px">バックアップ・証拠保全用</div>
+      </div>
+    </button>
+
+    <button class="export-btn" onclick="importJSON()">
+      <span class="export-icon">📥</span>
+      <div>
+        <div style="font-weight:500">JSONインポート</div>
+        <div style="font-size:11px;color:var(--text3);margin-top:2px">別端末からの復元</div>
+      </div>
+    </button>
+
+    <button class="export-btn" onclick="exportEvidencePDF()">
+      <span class="export-icon">🧾</span>
+      <div>
+        <div style="font-weight:500">証拠PDF出力（1日1ページ）</div>
+        <div style="font-size:11px;color:var(--text3);margin-top:2px">日付・セグメント・メモ・写真・GPS・SHA-256</div>
+      </div>
+    </button>
+
+    <input type="file" id="importFile" accept=".json" style="display:none" onchange="doImport(event)">
+
+    <div style="margin-top:20px">
+      <div class="card">
+        <div class="card-header"><span class="card-title">データ統計</span></div>
+        <div class="card-body" id="exportStats"></div>
+      </div>
+    </div>
+
+    <div class="card">
+      <div class="card-header"><span class="card-title">本日のデータハッシュ（SHA-256）</span></div>
+      <div class="card-body">
+        <div class="hash-line" id="todayHash">-</div>
+        <div class="small" style="margin-top:8px;">保存前でも現在画面内容を元に再計算されます（写真は軽量版: 画像本体ではなくサイズ情報を含める）。</div>
+      </div>
+    </div>
+  </div>
+</div>
+
+<div class="saved-toast" id="toast">保存しました</div>
+
+<script>
+const DB_NAME = 'maritime_log';
+const DB_VER = 2;
+let db;
+
+function openDB() {
+  return new Promise((res, rej) => {
+    const req = indexedDB.open(DB_NAME, DB_VER);
+    req.onupgradeneeded = (e) => {
+      const d = e.target.result;
+      if (!d.objectStoreNames.contains('days')) d.createObjectStore('days', { keyPath: 'date' });
+    };
+    req.onsuccess = (e) => { db = e.target.result; res(db); };
+    req.onerror = () => rej(req.error);
+  });
+}
+function dbGet(date) {
+  return new Promise((res, rej) => {
+    const tx = db.transaction('days', 'readonly');
+    const req = tx.objectStore('days').get(date);
+    req.onsuccess = () => res(req.result);
+    req.onerror = () => rej(req.error);
+  });
+}
+function dbPut(data) {
+  return new Promise((res, rej) => {
+    const tx = db.transaction('days', 'readwrite');
+    const req = tx.objectStore('days').put(data);
+    req.onsuccess = () => res();
+    req.onerror = () => rej(req.error);
+  });
+}
+function dbGetAll() {
+  return new Promise((res, rej) => {
+    const tx = db.transaction('days', 'readonly');
+    const req = tx.objectStore('days').getAll();
+    req.onsuccess = () => res(req.result);
+    req.onerror = () => rej(req.error);
+  });
+}
+
+let currentDate = todayStr();
+let segments = [];
+let photos = [];
+let gps = null;
+let nextSegId = 1;
+let nextPhotoId = 1;
+
+function todayStr() {
+  const d = new Date();
+  return `${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,'0')}-${String(d.getDate()).padStart(2,'0')}`;
+}
+
+async function init() {
+  await openDB();
+  document.getElementById('currentDate').value = currentDate;
+  setDefaultRateInputs();
+  updateHeaderDate();
+  await loadDay();
+  updateOnlineStatus();
+
+  window.addEventListener('online', updateOnlineStatus);
+  window.addEventListener('offline', updateOnlineStatus);
+
+  if ('serviceWorker' in navigator) {
+    try { await navigator.serviceWorker.register('./service-worker.js'); }
+    catch (e) { console.warn('SW registration failed', e); }
+  }
+}
+function setDefaultRateInputs() {
+  const defs = {
+    calcMode:'seaman',          // ← 追加（船員法デフォ）
+    baseMonthly:'0',
+    shipAllowanceMonthly:'0',
+    otherIncludedMonthly:'0',
+    monthlyHours:'173',
+    otRate:'1.30',              // ← 船員法デフォ
+    nightRate:'1.35'
+  };
+  Object.entries(defs).forEach(([id,v]) => {
+    const el = document.getElementById(id);
+    if (el && !el.value) el.value = v;
+  });
+}
+function updateOnlineStatus() {
+  const badge = document.getElementById('offlineBadge');
+  if (!navigator.onLine) {
+    document.body.classList.add('offline');
+    if (badge) badge.style.display = 'inline-block';
+  } else {
+    document.body.classList.remove('offline');
+    if (badge) badge.style.display = 'none';
+  }
+}
+function updateHeaderDate() {
+  const d = new Date(currentDate + 'T00:00:00');
+  const days = ['日','月','火','水','木','金','土'];
+  document.getElementById('headerDate').textContent =
+    `${d.getFullYear()}/${String(d.getMonth()+1).padStart(2,'0')}/${String(d.getDate()).padStart(2,'0')} (${days[d.getDay()]})`;
+}
+
+function changeDate(delta) {
+  const d = new Date(currentDate + 'T00:00:00');
+  d.setDate(d.getDate() + delta);
+  currentDate = `${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,'0')}-${String(d.getDate()).padStart(2,'0')}`;
+  document.getElementById('currentDate').value = currentDate;
+  updateHeaderDate();
+  loadDay();
+}
+
+async function loadDay() {
+  currentDate = document.getElementById('currentDate').value || currentDate;
+  updateHeaderDate();
+
+  const data = await dbGet(currentDate);
+  if (data) {
+    segments = data.segments || [];
+    photos = data.photos || [];
+    gps = data.gps || null;
+    nextSegId = data.nextSegId || (segments.length + 1);
+    nextPhotoId = data.nextPhotoId || (photos.length + 1);
+    document.getElementById('dayMemo').value = data.memo || '';
+    restoreRateInputs(data.rateInputs);
+  } else {
+    segments = [];
+    photos = [];
+    gps = null;
+    nextSegId = 1;
+    nextPhotoId = 1;
+    document.getElementById('dayMemo').value = '';
+    setDefaultRateInputs();
+  }
+
+  renderSegments();
+  renderPhotos();
+  renderGPS();
+  calcSummary();
+  renderRateCalc();
+  renderTodayHash();
+}
+
+function applyRateModeUI() {
+  const mode = document.getElementById('calcMode')?.value || 'seaman';
+  const isSeaman = mode === 'seaman';
+
+  const nightRateWrap = document.getElementById('nightRateWrap');
+  const nightHourlyWrap = document.getElementById('nightHourlyWrap');
+
+  if (nightRateWrap) nightRateWrap.style.display = isSeaman ? 'none' : '';
+  if (nightHourlyWrap) nightHourlyWrap.style.display = isSeaman ? 'none' : '';
+}
+
+function handleRateModeChange() {
+  const mode = document.getElementById('calcMode')?.value || 'seaman';
+  const otEl = document.getElementById('otRate');
+
+  if (otEl) {
+    const current = Number(otEl.value || 0);
+
+    // 「デフォルト値」として自然に切替（手入力を潰しすぎない）
+    if (mode === 'seaman') {
+      if (!otEl.value || current === 1.25) otEl.value = '1.30';
+    } else {
+      if (!otEl.value || current === 1.30) otEl.value = '1.25';
+    }
+  }
+
+  applyRateModeUI();
+  renderRateCalc();
+}
+  
+async function saveDay() {
+  const data = {
+    date: currentDate,
+    segments,
+    photos,
+    gps,
+    memo: document.getElementById('dayMemo').value,
+    nextSegId,
+    nextPhotoId,
+    rateInputs: getRateInputs(),
+    savedAt: new Date().toISOString()
+  };
+  await dbPut(data);
+  showToast();
+  renderTodayHash();
+  if (document.getElementById('page-weekly').classList.contains('active')) renderWeekly();
+  if (document.getElementById('page-export').classList.contains('active')) renderExportStats();
+}
+function showToast() {
+  const t = document.getElementById('toast');
+  t.classList.add('show');
+  setTimeout(() => t.classList.remove('show'), 1800);
+}
+
+const WORK_TYPES = ['当直','当直引継','荷役','出入港','保守','停泊中作業','供食','操練等','研修','安全臨時労働','補油作業','その他'];
+
+function addSegment(type) {
+  segments.push({ id: nextSegId++, type, start: '', end: '', workType: type === 'work' ? '当直' : '' });
+  renderSegments();
+  calcSummary();
+}
+function removeSegment(id) {
+  segments = segments.filter(s => s.id !== id);
+  renderSegments();
+  calcSummary();
+}
+function updateSegment(id, key, val) {
+  const s = segments.find(x => x.id === id);
+  if (s) { s[key] = val; calcSummary(); }
+}
+function setSegType(id, type) {
+  const s = segments.find(x => x.id === id);
+  if (!s) return;
+  s.type = type;
+  if (type === 'work' && !s.workType) s.workType = '当直';
+  renderSegments();
+  calcSummary();
+}
+function renderSegments() {
+  const el = document.getElementById('segmentList');
+  if (!segments.length) {
+    el.innerHTML = '<div style="color:var(--text3);font-size:12px;text-align:center;padding:16px">記録がありません</div>';
+    return;
+  }
+  el.innerHTML = segments.map((s) => `
+    <div class="segment">
+      <button class="seg-del" onclick="removeSegment(${s.id})">✕</button>
+      <div class="segment-type-row">
+        <button class="type-btn work ${s.type==='work'?'active':''}" onclick="setSegType(${s.id},'work')">● 作業</button>
+        <button class="type-btn rest ${s.type==='rest'?'active':''}" onclick="setSegType(${s.id},'rest')">◌ 休憩</button>
+      </div>
+      <div class="time-row">
+        <input class="time-input" type="time" value="${s.start||''}" onchange="updateSegment(${s.id},'start',this.value)">
+        <span class="time-sep">→</span>
+        <input class="time-input" type="time" value="${s.end||''}" onchange="updateSegment(${s.id},'end',this.value)">
+      </div>
+      ${s.type === 'work' ? `
+      <select class="work-type-select" onchange="updateSegment(${s.id},'workType',this.value)">
+        ${WORK_TYPES.map(t => `<option value="${t}" ${s.workType===t?'selected':''}>${t}</option>`).join('')}
+      </select>` : ''}
+    </div>
+  `).join('');
+}
+
+function timeToMin(t) {
+  if (!t) return null;
+  const [h,m] = t.split(':').map(Number);
+  if (Number.isNaN(h) || Number.isNaN(m)) return null;
+  return h * 60 + m;
+}
+function minToStr(m) {
+  if (m === null || m === undefined || Number.isNaN(m)) return '-';
+  const sign = m < 0 ? '-' : '';
+  const x = Math.abs(Math.round(m));
+  return `${sign}${Math.floor(x/60)}:${String(x%60).padStart(2,'0')}`;
+}
+function segDuration(s) {
+  const st = timeToMin(s.start), en = timeToMin(s.end);
+  if (st === null || en === null) return 0;
+  let d = en - st;
+  if (d < 0) d += 1440;
+  return d;
+}
+function getAbsoluteRangeForSegment(s) {
+  const st = timeToMin(s.start), en = timeToMin(s.end);
+  if (st === null || en === null || st === en) return null;
+  return en > st ? [st, en] : [st, en + 1440];
+}
+function rangesOverlap(a, b) {
+  return Math.max(a[0], b[0]) < Math.min(a[1], b[1]);
+}
+function findOverlapPairs() {
+  const valid = segments.map(s => ({ s, r: getAbsoluteRangeForSegment(s) })).filter(x => x.r);
+  const expanded = [];
+  valid.forEach(x => {
+    expanded.push(x);
+    expanded.push({ s: x.s, r: [x.r[0]+1440, x.r[1]+1440] });
+    expanded.push({ s: x.s, r: [x.r[0]-1440, x.r[1]-1440] });
+  });
+  const pairs = new Set();
+  for (let i=0;i<valid.length;i++) {
+    for (let j=i+1;j<valid.length;j++) {
+      const a = valid[i], b = valid[j];
+      const hit = expanded.filter(x=>x.s.id===a.s.id).some(ax =>
+        expanded.filter(x=>x.s.id===b.s.id).some(bx => rangesOverlap(ax.r,bx.r))
+      );
+      if (hit) pairs.add(`${a.s.id}-${b.s.id}`);
+    }
+  }
+  return [...pairs];
+}
+
+function parsePhotoDateToMinutes(photo, dateRef = currentDate) {
+  if (!photo || !photo.exifDate) return null;
+  const m = photo.exifDate.match(/(\d{4})-(\d{2})-(\d{2}) (\d{2}):(\d{2}):(\d{2})/);
+  if (!m) return null;
+  const pDate = `${m[1]}-${m[2]}-${m[3]}`;
+  if (pDate !== dateRef) return null;
+  return Number(m[4])*60 + Number(m[5]);
+}
+function isMinuteInSegment(min, seg) {
+  const st = timeToMin(seg.start), en = timeToMin(seg.end);
+  if (st === null || en === null || min === null || st === en) return false;
+  if (st < en) return min >= st && min <= en;
+  return (min >= st && min <= 1439) || (min >= 0 && min <= en);
+}
+function checkPhotoSegmentWarnings() {
+  const alertEl = document.getElementById('photoTimeAlert');
+  const validSegs = segments.filter(s => s.start && s.end);
+  if (!photos.length) { alertEl.style.display = 'none'; return; }
+
+  let outCount = 0, unknownCount = 0;
+  for (const p of photos) {
+    const pm = parsePhotoDateToMinutes(p, currentDate);
+    if (pm === null) { unknownCount++; continue; }
+    if (!validSegs.some(s => isMinuteInSegment(pm, s))) outCount++;
+  }
+  if (outCount || unknownCount) {
+    const arr = [];
+    if (outCount) arr.push(`${outCount}枚がセグメント外`);
+    if (unknownCount) arr.push(`${unknownCount}枚が時刻不明/別日`);
+    alertEl.textContent = `⚠ 写真時刻照合: ${arr.join(' / ')}`;
+    alertEl.style.display = 'block';
+  } else {
+    alertEl.style.display = 'none';
+  }
+}
+
+async function calcSummary() {
+  let workMin = 0, restMin = 0, invalidCount = 0;
+  const restSegs = [];
+
+  for (const s of segments) {
+    const st = timeToMin(s.start), en = timeToMin(s.end);
+    if ((s.start && !s.end) || (!s.start && s.end) || (s.start && s.end && st === en)) invalidCount++;
+    const d = segDuration(s);
+    if (s.type === 'work') workMin += d;
+    else { restMin += d; if (d > 0) restSegs.push(d); }
+  }
+
+  const minRestVal = restSegs.length ? Math.min(...restSegs) : null;
+  const splitCount = restSegs.length;
+
+  const wEl = document.getElementById('totalWork');
+  const rEl = document.getElementById('totalRest');
+  const mrEl = document.getElementById('minRest');
+  const scEl = document.getElementById('splitCount');
+
+  wEl.textContent = minToStr(workMin);
+  wEl.className = 'stat-value' + (workMin > 14*60 ? ' danger' : workMin > 12*60 ? ' warn' : '');
+  rEl.textContent = minToStr(restMin);
+  rEl.className = 'stat-value';
+  mrEl.textContent = minRestVal !== null ? minToStr(minRestVal) : '-';
+  mrEl.className = 'stat-value' + (minRestVal !== null && minRestVal < 6*60 ? ' warn' : '');
+  scEl.textContent = splitCount;
+  scEl.className = 'stat-value' + (splitCount >= 3 ? ' warn' : '');
+
+  const overlapPairs = findOverlapPairs();
+  const overlapAlert = document.getElementById('overlapAlert');
+  if (overlapPairs.length) {
+    overlapAlert.textContent = `⚠ セグメントの時間重複があります（${overlapPairs.length}組）`;
+    overlapAlert.style.display = 'block';
+  } else overlapAlert.style.display = 'none';
+
+  const validationAlert = document.getElementById('validationAlert');
+  if (invalidCount) {
+    validationAlert.textContent = `⚠ 未入力/同時刻（0分）のセグメントがあります（${invalidCount}件）`;
+    validationAlert.style.display = 'block';
+  } else validationAlert.style.display = 'none';
+
+  await updateCurrentWeekCompAlert();
+  checkPhotoSegmentWarnings();
+  renderRateCalc();
+  renderTodayHash();
+}
+
+function renderGPS() {
+  const status = document.getElementById('gpsStatus');
+  const info = document.getElementById('gpsInfo');
+  if (!gps) {
+    status.textContent = '未取得';
+    info.innerHTML = '';
+    return;
+  }
+  status.textContent = '取得済み';
+  const d = new Date(gps.timestamp);
+  info.innerHTML = `緯度: ${gps.lat.toFixed(6)}<br>経度: ${gps.lng.toFixed(6)}<br>精度: ±${Math.round(gps.accuracy)}m<br>時刻: ${d.toLocaleString('ja-JP')}`;
+}
+function captureGPS() {
+  if (!navigator.geolocation) return alert('この端末/環境では位置情報に対応していません');
+  document.getElementById('gpsStatus').textContent = '取得中...';
+  navigator.geolocation.getCurrentPosition(
+    (pos) => {
+      gps = {
+        lat: pos.coords.latitude,
+        lng: pos.coords.longitude,
+        accuracy: pos.coords.accuracy,
+        timestamp: new Date().toISOString()
+      };
+      renderGPS();
+      renderTodayHash();
+    },
+    (err) => {
+      alert('位置情報を取得できませんでした: ' + err.message);
+      renderGPS();
+    },
+    { enableHighAccuracy: true, timeout: 10000, maximumAge: 0 }
+  );
+}
+function clearGPS() { gps = null; renderGPS(); renderTodayHash(); }
+
+function addPhotos(event) {
+  const files = Array.from(event.target.files || []);
+  files.forEach(f => {
+    const reader = new FileReader();
+    reader.onload = (e) => {
+      const dataUrl = e.target.result;
+      getExifDate(dataUrl).then(exifDate => {
+        photos.push({
+          id: nextPhotoId++,
+          dataUrl,
+          exifDate,
+          name: f.name,
+          size: f.size,
+          type: f.type,
+          addedAt: new Date().toISOString()
+        });
+        renderPhotos();
+        calcSummary();
+      });
+    };
+    reader.readAsDataURL(f);
+  });
+  event.target.value = '';
+}
+function getExifDate(dataUrl) {
+  return new Promise(resolve => {
+    try {
+      const arr = dataUrl.split(',')[1];
+      if (!arr) return resolve(null);
+      const bin = atob(arr);
+      const bytes = new Uint8Array(bin.length);
+      for (let i = 0; i < bin.length; i++) bytes[i] = bin.charCodeAt(i);
+
+      for (let i = 0; i < bytes.length - 4; i++) {
+        if (bytes[i] === 0xFF && bytes[i+1] === 0xE1) {
+          const exifLen = (bytes[i+2] << 8) | bytes[i+3];
+          const exifData = bytes.slice(i+4, i+4+exifLen);
+          const str = String.fromCharCode(...exifData);
+          const match = str.match(/(\d{4}):(\d{2}):(\d{2}) (\d{2}):(\d{2}):(\d{2})/);
+          if (match) return resolve(`${match[1]}-${match[2]}-${match[3]} ${match[4]}:${match[5]}:${match[6]}`);
+        }
+      }
+    } catch (e) {}
+    resolve(null);
+  });
+}
+function removePhoto(id) {
+  photos = photos.filter(p => p.id !== id);
+  renderPhotos();
+  calcSummary();
+}
+function renderPhotos() {
+  const grid = document.getElementById('photoGrid');
+  if (!photos.length) { grid.innerHTML = ''; return; }
+  grid.innerHTML = photos.map(p => {
+    const pm = parsePhotoDateToMinutes(p, currentDate);
+    const inSeg = pm !== null && segments.some(s => isMinuteInSegment(pm, s));
+    const border = (pm !== null && !inSeg) ? 'border-color:#e8a020;' : '';
+    return `
+      <div>
+        <div class="photo-thumb" style="${border}">
+          <img src="${p.dataUrl}" loading="lazy">
+          <button class="del-photo" onclick="removePhoto(${p.id})">✕</button>
+        </div>
+        <div class="photo-exif">${p.exifDate ? p.exifDate.replace(' ','<br>') : '日時不明'}</div>
+      </div>`;
+  }).join('');
+  checkPhotoSegmentWarnings();
+}
+
+function getRateInputs() {
+  const parse = (id, fallback=0) => {
+    const v = Number(document.getElementById(id)?.value || fallback);
+    return Number.isFinite(v) ? v : fallback;
+  };
+  return {
+    calcMode: document.getElementById('calcMode')?.value || 'seaman', // ←追加
+    baseMonthly: parse('baseMonthly'),
+    shipAllowanceMonthly: parse('shipAllowanceMonthly'),
+    otherIncludedMonthly: parse('otherIncludedMonthly'),
+    monthlyHours: parse('monthlyHours', 173),
+    otRate: parse('otRate', 1.30),
+    nightRate: parse('nightRate', 1.35)
+  };
+}
+function restoreRateInputs(v) {
+  if (!v) return;
+  ['calcMode','baseMonthly','shipAllowanceMonthly','otherIncludedMonthly','monthlyHours','otRate','nightRate']
+    .forEach(k => {
+      if (v[k] !== undefined && document.getElementById(k)) {
+        document.getElementById(k).value = v[k];
+      }
+    });
+  applyRateModeUI(); // ←追加
+}
+function yen(n) { return Number.isFinite(n) ? `${Math.round(n).toLocaleString('ja-JP')}円` : '-'; }
+function renderRateCalc() {
+  applyRateModeUI(); // ←追加
+  const r = getRateInputs();
+  const basisMonthly = r.baseMonthly + r.shipAllowanceMonthly + r.otherIncludedMonthly;
+  const baseHourly = r.monthlyHours > 0 ? basisMonthly / r.monthlyHours : 0;
+  const otHourly = baseHourly * (r.otRate || 1.25);
+  const nightHourly = baseHourly * (r.nightRate || 1.35);
+
+  document.getElementById('baseHourly').textContent = baseHourly ? yen(baseHourly) : '-';
+  document.getElementById('otHourly').textContent = otHourly ? yen(otHourly) : '-';
+  document.getElementById('nightHourly').textContent = nightHourly ? yen(nightHourly) : '-';
+
+  const workMin = segments.filter(s=>s.type==='work').reduce((a,s)=>a+segDuration(s),0);
+  const dayOtMin = Math.max(0, workMin - 8*60);
+  const amt = (dayOtMin / 60) * otHourly;
+  document.getElementById('todayOtAmount').textContent = basisMonthly ? yen(amt) : '-';
+}
+
+async function sha256Hex(text) {
+  const enc = new TextEncoder().encode(text);
+  const buf = await crypto.subtle.digest('SHA-256', enc);
+  return Array.from(new Uint8Array(buf)).map(b => b.toString(16).padStart(2, '0')).join('');
+}
+function buildDayCanonical(dayLike) {
+  return JSON.stringify({
+    date: dayLike.date,
+    segments: (dayLike.segments || []).map(s => ({ type: s.type, start: s.start, end: s.end, workType: s.workType || '' })),
+    memo: dayLike.memo || '',
+    gps: dayLike.gps || null,
+    photos: (dayLike.photos || []).map(p => ({
+      name: p.name || '', exifDate: p.exifDate || null, size: p.size || 0, mime: p.type || '', dataUrlLen: p.dataUrl ? p.dataUrl.length : 0
+    })),
+    rateInputs: dayLike.rateInputs || null
+  });
+}
+async function renderTodayHash() {
+  const el = document.getElementById('todayHash');
+  if (!el) return;
+  const day = { date: currentDate, segments, photos, gps, memo: document.getElementById('dayMemo')?.value || '', rateInputs: getRateInputs() };
+  try { el.textContent = await sha256Hex(buildDayCanonical(day)); }
+  catch { el.textContent = 'ハッシュ計算エラー'; }
+}
+
+async function renderHistory() {
+  const all = await dbGetAll();
+  all.sort((a,b) => b.date.localeCompare(a.date));
+  const el = document.getElementById('historyList');
+  if (!all.length) {
+    el.innerHTML = '<div style="color:var(--text3);text-align:center;padding:40px 0">記録がありません</div>';
+    return;
+  }
+  el.innerHTML = all.map(d => {
+    let wMin = 0; (d.segments || []).forEach(s => { if (s.type === 'work') wMin += segDuration(s); });
+    const pct = Math.min((wMin / (14*60)) * 100, 100);
+    const over = wMin > 14*60;
+    return `
+      <div class="day-item" onclick="jumpToDate('${d.date}')">
+        <div class="day-item-header">
+          <span class="day-date">${d.date}</span>
+          <span class="day-hours" style="color:${over?'#fca5a5':'var(--text2)'}">${minToStr(wMin)}</span>
+        </div>
+        ${d.memo ? `<div style="font-size:11px;color:var(--text3);margin-bottom:4px">${escapeHtml(d.memo).slice(0,60)}</div>` : ''}
+        <div style="font-size:10px;color:var(--text3)">${(d.segments||[]).length}セグメント / 写真${(d.photos||[]).length}枚${d.gps?' / GPSあり':''}</div>
+        <div class="day-bar"><div class="day-bar-fill ${over?'over':''}" style="width:${pct}%"></div></div>
+      </div>`;
+  }).join('');
+}
+function jumpToDate(date) {
+  currentDate = date;
+  document.getElementById('currentDate').value = date;
+  updateHeaderDate();
+  loadDay();
+  showPage('input');
+}
+
+function dateRangeOfWeekSundayStart(dateStr) {
+  const d = new Date(dateStr + 'T00:00:00');
+  d.setDate(d.getDate() - d.getDay());
+  const start = new Date(d), end = new Date(d);
+  end.setDate(end.getDate() + 6);
+  const fmt = x => `${x.getFullYear()}-${String(x.getMonth()+1).padStart(2,'0')}-${String(x.getDate()).padStart(2,'0')}`;
+  return { start: fmt(start), end: fmt(end) };
+}
+async function updateCurrentWeekCompAlert() {
+  const all = await dbGetAll();
+  const week = dateRangeOfWeekSundayStart(currentDate);
+  const targetDates = new Set();
+  let cur = new Date(week.start + 'T00:00:00');
+  for (let i=0;i<7;i++) {
+    targetDates.add(`${cur.getFullYear()}-${String(cur.getMonth()+1).padStart(2,'0')}-${String(cur.getDate()).padStart(2,'0')}`);
+    cur.setDate(cur.getDate()+1);
+  }
+
+  let total = 0;
+  for (const ds of targetDates) {
+    if (ds === currentDate) total += segments.filter(s=>s.type==='work').reduce((a,s)=>a+segDuration(s),0);
+    else {
+      const rec = all.find(x=>x.date===ds);
+      if (rec) (rec.segments||[]).forEach(s => { if (s.type==='work') total += segDuration(s); });
+    }
+  }
+
+  const alertEl = document.getElementById('compAlert');
+  if (total > 72*60) {
+    const over = total - 72*60;
+    const compDays = Math.ceil((over/60)/8);
+    alertEl.textContent = `⚠ 今週 ${minToStr(total)}（72h超 +${minToStr(over)}）→ 補償休日目安 ${compDays}日`;
+    alertEl.style.display = 'block';
+  } else {
+    alertEl.style.display = 'none';
+  }
+}
+
+async function renderWeekly() {
+  const all = await dbGetAll();
+  const byDate = {};
+  all.forEach(d => byDate[d.date] = (d.segments || []).filter(s=>s.type==='work').reduce((a,s)=>a+segDuration(s),0));
+  const dates = Object.keys(byDate).sort();
+  const el = document.getElementById('weeklyContent');
+  if (!dates.length) {
+    el.innerHTML = '<div style="color:var(--text3);text-align:center;padding:40px 0">記録がありません</div>';
+    return;
+  }
+
+  const first = new Date(dates[0] + 'T00:00:00');
+  const last = new Date(dates[dates.length - 1] + 'T00:00:00');
+  first.setDate(first.getDate() - first.getDay());
+
+  const weeks = [];
+  let cur = new Date(first);
+  while (cur <= last) {
+    const days = [];
+    for (let i=0;i<7;i++) {
+      const ds = `${cur.getFullYear()}-${String(cur.getMonth()+1).padStart(2,'0')}-${String(cur.getDate()).padStart(2,'0')}`;
+      days.push({ date: ds, day: cur.getDay(), min: byDate[ds] || 0 });
+      cur.setDate(cur.getDate() + 1);
+    }
+    const total = days.reduce((a,b)=>a+b.min,0);
+    const day8Over = days.reduce((a,d)=>a+Math.max(0,d.min - 8*60),0);
+    const week40Over = Math.max(0, total - 40*60);
+    const estNonDupWeekOt = Math.max(day8Over, week40Over);
+    weeks.push({ start: days[0].date, days, total, day8Over, week40Over, estNonDupWeekOt });
+  }
+
+  weeks.reverse();
+  const names = ['日','月','火','水','木','金','土'];
+
+  el.innerHTML = weeks.map(w => {
+    const over72 = w.total > 72*60;
+    const compDays = over72 ? Math.ceil(((w.total-72*60)/60)/8) : 0;
+    return `
+      <div class="week-card">
+        <div class="week-label">
+          ${w.start} の週 / 合計 <span style="color:${over72?'#fca5a5':'#86efac'};font-weight:600">${minToStr(w.total)}</span>
+          ${over72 ? ` / 72h超 +${minToStr(w.total-72*60)} → 補償休日目安 ${compDays}日` : ''}
+        </div>
+        <div class="small" style="margin-bottom:8px;">
+          日8h超合計: ${minToStr(w.day8Over)} / 週40h超: ${minToStr(w.week40Over)} / 概算残業（重複回避目安）: ${minToStr(w.estNonDupWeekOt)}
+        </div>
+        ${w.days.map(d => `
+          <div class="week-bar-row">
+            <div class="week-bar-label">${names[d.day]}</div>
+            <div class="week-bar-outer"><div class="week-bar-inner ${d.min>14*60?'over':''}" style="width:${Math.min(100,(d.min/(14*60))*100).toFixed(1)}%"></div></div>
+            <div class="week-bar-val">${d.min ? minToStr(d.min) : '-'}</div>
+          </div>`).join('')}
+      </div>`;
+  }).join('');
+}
+
+async function exportCSV() {
+  const all = await dbGetAll();
+  all.sort((a,b)=>a.date.localeCompare(b.date));
+  let csv = '日付,区分,作業種別,開始,終了,時間(分),労働時間(分),休憩時間(分),日8h超(分),GPS緯度,GPS経度,GPS精度,写真枚数,メモ,SHA256\n';
+
+  for (const d of all) {
+    const segs = d.segments || [];
+    const workMin = segs.filter(s=>s.type==='work').reduce((a,s)=>a+segDuration(s),0);
+    const restMin = segs.filter(s=>s.type==='rest').reduce((a,s)=>a+segDuration(s),0);
+    const day8Over = Math.max(0, workMin - 8*60);
+    const hash = await sha256Hex(buildDayCanonical(d));
+    const gpsLat = d.gps?.lat ?? '';
+    const gpsLng = d.gps?.lng ?? '';
+    const gpsAcc = d.gps?.accuracy ? Math.round(d.gps.accuracy) : '';
+    const memo = (d.memo || '').replace(/"/g,'""');
+
+    if (!segs.length) {
+      csv += `${d.date},,,,,,${workMin},${restMin},${day8Over},${gpsLat},${gpsLng},${gpsAcc},${(d.photos||[]).length},"${memo}",${hash}\n`;
+      continue;
+    }
+    for (const s of segs) {
+      csv += [
+        d.date, s.type === 'work' ? '作業' : '休憩', s.type === 'work' ? (s.workType || '作業') : '',
+        s.start || '', s.end || '', segDuration(s), workMin, restMin, day8Over,
+        gpsLat, gpsLng, gpsAcc, (d.photos||[]).length, `"${memo}"`, hash
+      ].join(',') + '\n';
+    }
+  }
+  download('\uFEFF' + csv, `maritime_log_${todayStr()}.csv`, 'text/csv');
+}
+async function exportJSON() {
+  const all = await dbGetAll();
+  download(JSON.stringify({ exportedAt: new Date().toISOString(), records: all }, null, 2), `maritime_log_${todayStr()}.json`, 'application/json');
+}
+function importJSON() { document.getElementById('importFile').click(); }
+async function doImport(event) {
+  const f = event.target.files[0];
+  if (!f) return;
+  try {
+    const text = await f.text();
+    const data = JSON.parse(text);
+    const records = data.records || data;
+    let count = 0;
+    for (const r of records) {
+      if (r?.date) { await dbPut(r); count++; }
+    }
+    alert(`${count}件をインポートしました`);
+    event.target.value = '';
+    if (document.getElementById('page-history').classList.contains('active')) renderHistory();
+    if (document.getElementById('page-weekly').classList.contains('active')) renderWeekly();
+    if (document.getElementById('page-export').classList.contains('active')) renderExportStats();
+  } catch (e) { alert('インポートエラー: ' + e.message); }
+}
+function download(content, filename, type) {
+  const a = document.createElement('a');
+  a.href = URL.createObjectURL(new Blob([content], { type }));
+  a.download = filename;
+  a.click();
+  setTimeout(() => URL.revokeObjectURL(a.href), 1000);
+}
+async function renderExportStats() {
+  const all = await dbGetAll();
+  let totalWork = 0, totalDays = all.length, totalPhotos = 0, gpsDays = 0;
+  all.forEach(d => {
+    (d.segments||[]).forEach(s => { if (s.type==='work') totalWork += segDuration(s); });
+    totalPhotos += (d.photos||[]).length;
+    if (d.gps) gpsDays++;
+  });
+  const latest = all.length ? all.slice().sort((a,b)=>b.date.localeCompare(a.date))[0].date : '-';
+  document.getElementById('exportStats').innerHTML = `
+    <div class="summary-grid">
+      <div class="stat-box"><div class="stat-label">記録日数</div><div class="stat-value">${totalDays}</div></div>
+      <div class="stat-box"><div class="stat-label">総労働時間</div><div class="stat-value" style="font-size:16px">${minToStr(totalWork)}</div></div>
+      <div class="stat-box"><div class="stat-label">写真枚数</div><div class="stat-value">${totalPhotos}</div></div>
+      <div class="stat-box"><div class="stat-label">GPS記録日</div><div class="stat-value">${gpsDays}</div></div>
+      <div class="stat-box"><div class="stat-label">最終更新</div><div class="stat-value" style="font-size:12px">${latest}</div></div>
+      <div class="stat-box"><div class="stat-label">平均/日</div><div class="stat-value" style="font-size:16px">${totalDays?minToStr(totalWork/totalDays):'-'}</div></div>
+    </div>`;
+}
+
+async function exportEvidencePDF() {
+  const all = await dbGetAll();
+  all.sort((a,b)=>a.date.localeCompare(b.date));
+  if (!all.length) return alert('記録がありません');
+
+  const old = document.getElementById('printEvidencePage');
+  if (old) old.remove();
+
+  const root = document.createElement('div');
+  root.id = 'printEvidencePage';
+
+  for (const d of all) {
+    const segs = d.segments || [];
+    const phs = d.photos || [];
+    const workMin = segs.filter(s=>s.type==='work').reduce((a,s)=>a+segDuration(s),0);
+    const restMin = segs.filter(s=>s.type==='rest').reduce((a,s)=>a+segDuration(s),0);
+    const day8Over = Math.max(0, workMin - 8*60);
+
+    let outCount = 0, unknownCount = 0;
+    phs.forEach(p => {
+      const pm = parsePhotoDateToMinutes(p, d.date);
+      if (pm === null) { unknownCount++; return; }
+      if (!segs.some(s => isMinuteInSegment(pm, s))) outCount++;
+    });
+
+    const hash = await sha256Hex(buildDayCanonical(d));
+    const gpsText = d.gps
+      ? `緯度 ${d.gps.lat.toFixed(6)} / 経度 ${d.gps.lng.toFixed(6)} / 精度 ±${Math.round(d.gps.accuracy)}m / ${new Date(d.gps.timestamp).toLocaleString('ja-JP')}`
+      : '記録なし';
+
+    const page = document.createElement('div');
+    page.className = 'print-page';
+    page.innerHTML = `
+      <div class="print-title">航海勤務記録（証拠出力）</div>
+      <div class="print-sub">日付: ${d.date} / 出力: ${new Date().toLocaleString('ja-JP')}</div>
+      <div class="print-box">
+        <div><strong>日次集計</strong></div>
+        <div>労働時間: ${minToStr(workMin)} / 休憩時間: ${minToStr(restMin)} / 日8h超: ${minToStr(day8Over)} / セグメント数: ${segs.length}</div>
+        <div>${(outCount || unknownCount) ? `写真照合警告: ${outCount}枚セグメント外 / ${unknownCount}枚時刻不明・別日` : '写真照合: 問題なし'}</div>
+      </div>
+      <div class="print-box"><div><strong>位置情報（任意）</strong></div><div>${gpsText}</div></div>
+      <div class="print-box">
+        <div><strong>セグメント</strong></div>
+        <table class="print-seg-table">
+          <thead><tr><th>区分</th><th>作業種別</th><th>開始</th><th>終了</th><th>分</th></tr></thead>
+          <tbody>
+            ${segs.length ? segs.map(s => `
+              <tr>
+                <td>${s.type==='work'?'作業':'休憩'}</td>
+                <td>${s.type==='work'?escapeHtml(s.workType||'作業'):'-'}</td>
+                <td>${escapeHtml(s.start||'')}</td>
+                <td>${escapeHtml(s.end||'')}</td>
+                <td>${segDuration(s)}</td>
+              </tr>`).join('') : '<tr><td colspan="5">記録なし</td></tr>'}
+          </tbody>
+        </table>
+      </div>
+      <div class="print-box"><div><strong>メモ</strong></div><div style="white-space:pre-wrap;min-height:20px;">${escapeHtml(d.memo || '')}</div></div>
+      <div class="print-box">
+        <div><strong>写真（${phs.length}枚）</strong></div>
+        <div class="print-photos">
+          ${phs.map(p => `
+            <div class="print-photo">
+              <img src="${p.dataUrl}" />
+              <div style="font-size:10px;">${escapeHtml(p.name||'')}</div>
+              <div style="font-size:10px;">${escapeHtml(p.exifDate||'日時不明')}</div>
+            </div>`).join('')}
+        </div>
+      </div>
+      <div class="print-box"><div><strong>データハッシュ（SHA-256）</strong></div><div class="print-hash">${hash}</div></div>
+    `;
+    root.appendChild(page);
+  }
+
+  document.body.appendChild(root);
+  window.print();
+  setTimeout(() => root.remove(), 1000);
+}
+
+function showPage(name) {
+  document.querySelectorAll('.page').forEach(p => p.classList.remove('active'));
+  document.querySelectorAll('.nav-btn').forEach(b => b.classList.remove('active'));
+  document.getElementById('page-' + name).classList.add('active');
+
+  const navBtns = Array.from(document.querySelectorAll('.nav-btn'));
+  const idxMap = { input: 0, history: 1, weekly: 2, export: 3 };
+  if (idxMap[name] !== undefined) navBtns[idxMap[name]].classList.add('active');
+
+  if (name === 'history') renderHistory();
+  if (name === 'weekly') {
+  renderWeekly();
+  renderRateCalc();
+}
+  if (name === 'export') renderExportStats();
+  renderTodayHash();
+}
+
+function escapeHtml(str) {
+  return String(str)
+    .replace(/&/g,'&amp;')
+    .replace(/</g,'&lt;')
+    .replace(/>/g,'&gt;')
+    .replace(/"/g,'&quot;')
+    .replace(/'/g,'&#39;');
+}
+
+init();
+</script>
+<script>
+if ("serviceWorker" in navigator) {
+  window.addEventListener("load", () => {
+    navigator.serviceWorker.register("./service-worker.js").catch(console.error);
+  });
+}
+</script>
+</body>
+</html>
+
+
+
+
+
